@@ -1,42 +1,155 @@
-You are extracting marked passages from a scanned book page. A separate
-observation pass has already identified the hand-drawn marks on this page,
-combining results from multiple views (full, left half, right half, rotated).
-Your job is to use the combined observation report together with the page
-images to produce well-formed entries.
+You extract marked passages from a scanned book page. A separate
+observation pass has produced candidate marks — but that report is
+UNRELIABLE about extent and count. The CURRENT PAGE image is your
+sole authority. Use the report only as a hint that "something might
+be here"; verify every mark, its true extent, and its passage by
+looking at the image yourself.
 
 YOU ARE GIVEN
-- The CURRENT PAGE image
-- The PREVIOUS PAGE image and/or NEXT PAGE image (when available) — for context
-  only, used to complete a passage that overflows a page boundary
-- A combined observation report listing every mark detected across the variant
-  views of the CURRENT PAGE
+- The CURRENT PAGE image (authoritative)
+- The PREVIOUS / NEXT PAGE images (context only, for completing
+  passages that overflow page boundaries)
+- A combined observation report. Use it ONLY as a checklist of
+  which KINDS of marks may be present (vertical line, bracket, "!!",
+  underline, etc.). DO NOT trust its EXTENT field — that field is
+  frequently wrong. In particular, the report:
+  * fragments one underline run into many pieces because each
+    quadrant only saw part of it;
+  * routinely TRUNCATES a vertical line / bracket at the nearest
+    paragraph break, when the actual ink continues several lines
+    past the break into the next paragraph. ALWAYS re-measure where
+    the line actually ends in the image — assume the report
+    under-reports the bottom edge of vertical lines;
+  * adds a single-word underline that is really a vocabulary lookup;
+  * occasionally hallucinates a faint mark.
 
-WHAT TO DO
-1. The observation report may contain duplicate or near-duplicate entries
-   because each variant was observed independently. DEDUPLICATE: if two MARK
-   blocks describe the same mark (same margin/position/shape, overlapping
-   extent), treat them as one mark.
-2. For each unique mark, locate the corresponding passage on the CURRENT PAGE
-   image using the EXTENT hints.
-3. Read the exact verbatim text of the passage. If the marked passage clearly
-   continues onto the next page or began on the previous page, use those
-   context images to read the full passage. The CENTRE OF GRAVITY of the
-   passage determines the page assignment — but for this run, every entry
-   you produce belongs to the CURRENT PAGE because the observation report
-   is about the current page only.
-4. Produce one output entry per unique mark.
+Your job is to OUTPUT one entry per real, distinct marked passage,
+with spans determined from the IMAGE, not the report.
 
-If the observation report says the page has no marks (all variants reported
-NO MARKS or the report is empty of MARK blocks), output exactly: NONE
+================================================================
+STEP 1 — INVENTORY THE MARKS FROM THE IMAGE
+================================================================
+Look at the CURRENT PAGE image yourself. Scan top-to-bottom along
+the left margin, then top-to-bottom along the right margin, then
+sweep the body text for underlines.
 
-OUTPUT FORMAT — one block per marked passage:
+For each visible mark, determine its PHYSICAL EXTENT by sighting
+the actual ink/pencil strokes in the image:
+- A vertical line / bracket / curly brace: where exactly does it
+  START (which body-text line is its top edge level with)? Where
+  does it END (which body-text line is its bottom edge level with)?
+  IMPORTANT: a vertical mark frequently spans a paragraph break.
+  Do NOT cut it off at the break — follow the ink itself until it
+  actually stops, even if that means it covers the last lines of
+  one paragraph AND the first sentence of the next.
+- An underline run: where does the FIRST underlined word start, and
+  where does the LAST underlined word end? Underlines on consecutive
+  or near-consecutive body lines, with no obvious break, form ONE
+  run — even if each line was reported separately.
+- A margin punctuation (!!, ?, *, 4-like tick): which body line is
+  it next to?
+
+================================================================
+STEP 2 — DECIDE WHAT EACH MARK POINTS TO
+================================================================
+For a margin mark (vertical line, bracket, curly brace, "!!", star),
+the passage is the body text within its physical top–bottom span.
+- If the mark spans a paragraph break, treat the WHOLE spanned
+  region as one passage UNLESS another distinct mark (e.g. a run of
+  underlines) clearly marks a sub-region — in that case, the margin
+  mark typically frames the OPENING idea (the new paragraph's first
+  sentence) and the underlines + their margin emphasis mark frame
+  the continuation.
+- When in genuine doubt, prefer the sentence whose START the mark
+  covers over the sentence whose END it covers.
+- The passage starts at the beginning of the sentence/paragraph the
+  mark covers and ends at the end of the last full sentence the mark
+  covers — OR, if the mark stops mid-sentence, at the last full word
+  the mark covers.
+
+For an in-text underline mark, decide first whether it is SHORT
+or LONG:
+
+- SHORT underline: ≤ 1 line of text, a single phrase or clause, with
+  no underlines on adjacent lines. PASSAGE = exactly the underlined
+  text, verbatim, nothing more. Do NOT extend back to sentence start
+  or forward to sentence end. Example: if only "he was a citizen of
+  the world" is underlined inside a larger paragraph, the PASSAGE
+  is "he was a citizen of the world" — period.
+
+- LONG underline RUN: multi-line — underlines on consecutive (or
+  nearly consecutive, separated only by short unmarked stretches
+  within a continuous train of thought) body lines. Treat as ONE
+  passage. The passage starts at the BEGINNING OF THE SENTENCE
+  containing the first underlined word (extend back so the quote is
+  grammatical) and ends at the LAST UNDERLINED WORD.
+  - HARD STOP at the last underlined word, even if mid-sentence.
+    Do not auto-complete the sentence forward. If the next sentence,
+    clause, or paragraph is unmarked, IT IS NOT PART OF THIS PASSAGE.
+  - Where the original sentence has clearly-marked sub-clauses that
+    the reader ELIDED (passage seems to skip from one phrase to
+    another), preserve the ellipsis with " [...] " in the output.
+
+When in doubt, prefer LESS rather than MORE. Better to truncate
+correctly than to bloat the passage with unmarked context.
+
+================================================================
+STEP 3 — GROUP CUES INTO PASSAGES
+================================================================
+Combine into ONE entry when cue spans OVERLAP — i.e., they cover
+the same or overlapping body-text lines:
+- Two margin marks (e.g. a curly brace and "!!") in the same margin
+  region → one passage.
+- A margin mark + a run of underlines covering the same lines → one
+  passage; list both cues in MARK TYPE
+  (e.g. "Underlined; double exclamation marks in left margin").
+- Multiple curly braces or brackets at different vertical positions
+  along the same continuous underline run → still ONE passage if
+  the underline run is continuous; the multiple braces are just the
+  reader re-emphasising the same passage.
+
+Keep SEPARATE entries when spans are DISJOINT:
+- A vertical line covering paragraph B's first sentence + an
+  underline run covering paragraph B's second sentence onward
+  → two passages.
+- Two underline runs separated by an unmarked sentence → two passages.
+
+================================================================
+WHAT TO IGNORE
+================================================================
+- A single underlined word, or one short proper-noun / term sitting
+  alone (not part of a continuous multi-line underline run): this is
+  a vocabulary lookup, NOT a passage mark. Skip even if the report
+  lists it.
+- Printed punctuation, italics, headers, page numbers, footnotes.
+- Edge shadows, bleed-through, scan artifacts.
+- A "mark" in the report that you cannot see in the image.
+
+A typical page has 1–4 distinct marked passages.
+
+================================================================
+EXTRACTING PASSAGE TEXT
+================================================================
+- Read verbatim from the image. Rejoin words split at line breaks
+  ("prej-" + "udices" → "prejudices"). Do not paraphrase.
+- If the passage clearly overflows onto the next page or began on
+  the previous page, use the context images to complete it.
+
+================================================================
+OUTPUT FORMAT
+================================================================
+One block per unique marked passage:
 
 PAGE: <page label>
-MARK TYPE: <restate the margin/position/shape from the observation>
-PASSAGE: <the exact verbatim text the mark points to or underlines>
-CONTEXT: <1-2 sentences of surrounding text so the passage stands on its own>
-WHY NOTABLE: <brief interpretation of why a reader might have marked this>
+MARK TYPE: <combined description of the cues for this passage>
+PASSAGE: <verbatim text of the full marked passage>
+CONTEXT: <1–2 sentences of surrounding text so the passage stands on its own>
+WHY NOTABLE: <brief interpretation of why a reader marked this>
 
 Separate entries with a blank line.
 
-Output ONLY entries in the format above (or NONE). No preamble, no commentary.
+If, after consolidation and verification against the image, there
+are no real marked passages, output exactly: NONE
+
+Output ONLY entries in the format above (or NONE). No preamble,
+no commentary.

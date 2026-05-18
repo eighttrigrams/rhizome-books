@@ -52,3 +52,20 @@ Use
 ```bash
 reset-dev-db.sh
 ```
+
+## Prompt tuning (bookquotes)
+
+Examples live in `../rhizome-books-test-catalogue/` (one folder per
+`example-NNN`, plus an `expectations.md` listing the expected
+`MARK TYPE` / `PASSAGE` per subject page).
+
+Loop:
+
+1. `./run-test-catalogue.sh` — runs `extract-bookquotes.sh` against
+   every example discovered from `expectations.md` headings. Outputs
+   go to `test-catalogue-out/<example>.md`.
+2. `./score-test-catalogue.py` — compares `MARK TYPE` + `PASSAGE`
+   against `expectations.md` (word-overlap F1 + count penalty) and
+   prints a per-example score and an overall average.
+3. Tweak `prompts/extract-bookquotes.txt`, repeat. Goal: overall
+   score → 1.0.

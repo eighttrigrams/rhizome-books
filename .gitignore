@@ -10,3 +10,5 @@ extracted-bookquotes.md
 extracted-bookquotes.*.md
 data
 current-img
+test-catalogue-out
+.DS_Store

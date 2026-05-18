@@ -255,7 +255,9 @@ Read the image file: $next_full   (NEXT page p.${next_page} — context only, fo
   fi
 
   call_delay
-  extract_result=$(echo "$extract_input" | claude -p --model claude-opus-4-7 --effort low --add-dir "$WORK" --tools "Read" 2>/dev/null) || true
+  # Bumped to medium so the extract pass actually re-verifies mark extents against the page image
+  # instead of trusting the (often truncated) observation report.
+  extract_result=$(echo "$extract_input" | claude -p --model claude-opus-4-7 --effort medium --add-dir "$WORK" --tools "Read" 2>/dev/null) || true
 
   if [ -z "$extract_result" ] || [[ "$extract_result" == "NONE" ]]; then
     echo "no passages extracted"
