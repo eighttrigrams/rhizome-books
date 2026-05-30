@@ -242,23 +242,33 @@ cut it off too early; check the next page before finalising it.
 MARKING IMPORTANCE
 ================================================================
 Most marked passages are ordinary. Some carry an EXTRA emphasis cue that
-singles them out — for those, and only those, add the line
-`IMPORTANT: yes` (between MARK TYPE and TITLE). Emphasis cues that make a
-passage important:
-- exclamation mark(s) in the margin ("!", "!!")
+singles them out — for those, add the line `IMPORTANT: yes` (between MARK
+TYPE and TITLE). Emphasis cues that make a passage important:
+- a margin EXCLAMATION mark. CRITICAL: a hand-drawn "!" does NOT look like
+  a neat typeset "!". It is a BOLD, THICK, heavy vertical or slightly
+  slanted stroke in the margin — often with a dot, tick, or small curl near
+  its base — drawn large alongside the lines it emphasises. Two such
+  strokes are "!!".
 - a written comment or reaction in the margin ("HA", "?", "ROLL EYES", ...)
-- a special squiggle, star, arrow, or other deliberate emphasis shape
-- an encircling — a loop or circle drawn around words
+- a star, arrow, tick, or other deliberate emphasis shape
+- a squiggle, or an encircling (a loop or circle drawn around words)
 - a doubled / "specially highlighted" sub-span (a second underline, or an
   underline laid over already-underlined text)
 
-A PLAIN underline, or a PLAIN vertical line / bracket / curly brace in the
-margin, is NOT important on its own — OMIT the IMPORTANT line for those.
-Only the extra emphasis cues above qualify.
+DISTINGUISH BY WEIGHT, not just shape. A THIN, light, neat vertical line /
+bracket / curly brace running alongside a passage is STRUCTURAL — NOT
+important. A THICK, bold, heavy, or emphatic margin stroke is an
+exclamation / emphasis mark — IMPORTANT. If a margin stroke is notably
+heavy or emphatic and you cannot decide whether it is a "!" or a plain
+line, mark it IMPORTANT: missing a real emphasis is worse than a false one.
 
-Because a missed emphasis matters more than a false one, when one of the
-cues above is genuinely visible, prefer to mark IMPORTANT — do not invent
-cues that are not there, but do not be timid about real ones.
+A plain underline alone is NOT important. Omit the IMPORTANT line unless
+one of the emphasis cues above is genuinely present.
+
+A MARGIN-EMPHASIS PASS is supplied with the page input (a separate focused
+scan of the margins). Any passage it lists as SINGLED OUT carries an
+emphatic margin mark — set IMPORTANT: yes on the extracted passage that
+matches it, in addition to any emphasis you confirm yourself.
 
 ================================================================
 OUTPUT FORMAT

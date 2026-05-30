@@ -50,6 +50,7 @@ CALL_TIMEOUT="${CALL_TIMEOUT:-600}"  # seconds before a hung model call is kille
 EXTRACT_EFFORT="${EXTRACT_EFFORT:-high}"  # one call now does detect+extract over many images, so use high effort
 
 EXTRACT_PROMPT="$(cat "${SCRIPT_DIR}/prompts/extract-bookquotes.txt")"
+MARGIN_PROMPT="$(cat "${SCRIPT_DIR}/prompts/margin-emphasis.txt")"
 
 cleanup_work() { rm -rf "$WORK"; }
 
@@ -60,7 +61,7 @@ call_delay() { sleep $(( RANDOM % 5 + 1 )); }
 CC_OUT=""
 CC_STATUS=""
 claude_call() {
-  local model="$1" input="$2"
+  local model="$1" input="$2" effort="${3:-$EXTRACT_EFFORT}"
   local attempt=0 delay=3 out rc err transient
   local infile="$WORK/.cc_in" outfile="$WORK/.cc_out" errfile="$WORK/.cc_err"
   while :; do
@@ -70,7 +71,7 @@ claude_call() {
     # Run in the background under a watchdog so a HUNG call (model degraded but not
     # erroring) is killed and treated as a transient outage, instead of blocking
     # the whole batch forever.
-    claude -p --model "$model" --effort "$EXTRACT_EFFORT" --add-dir "$WORK" --tools "Read" \
+    claude -p --model "$model" --effort "$effort" --add-dir "$WORK" --tools "Read" \
       < "$infile" > "$outfile" 2>"$errfile" &
     local cpid=$! waited=0 timedout=0
     while kill -0 "$cpid" 2>/dev/null; do
@@ -284,6 +285,8 @@ for page in "${all_pages[@]}"; do
   tr="$WORK/p.${page}.tr.${ext}"
   bl="$WORK/p.${page}.bl.${ext}"
   br="$WORK/p.${page}.br.${ext}"
+  lmg="$WORK/p.${page}.lmg.${ext}"
+  rmg="$WORK/p.${page}.rmg.${ext}"
 
   cp "$src_img" "$full"
 
@@ -318,11 +321,36 @@ for page in "${all_pages[@]}"; do
   magick "$full" -crop "${HALF_W}x${HALF_H}+0+$((H-HALF_H))" +repage "$bl"
   magick "$full" -crop "${HALF_W}x${HALF_H}+$((W-HALF_W))+$((H-HALF_H))" +repage "$br"
 
-  echo -n "p.$page detect+extract (full + 4 quadrants, ${EXTRACT_EFFORT} effort) ... "
+  # Focused margin-emphasis pass: tall upscaled strips of the left/right margins,
+  # whose only job is to spot marks that SINGLE OUT a passage (bold hook, arrow,
+  # "!", star, comment). A dedicated, focused call perceives these far more
+  # reliably than the overloaded detect+extract call, which keeps mistaking a
+  # bold hand-drawn "!" for a plain structural line.
+  SMW=$((W*22/100))
+  magick "$full" -crop "${SMW}x${H}+0+0" +repage -resize 220% "$lmg"
+  magick "$full" -crop "${SMW}x${H}+$((W-SMW))+0" +repage -resize 220% "$rmg"
+  margin_input="$MARGIN_PROMPT
+
+Read the image file: $lmg   (LEFT margin strip, upscaled)
+Read the image file: $rmg   (RIGHT margin strip, upscaled)
+"
+  call_delay
+  claude_call "claude-opus-4-8" "$margin_input" "medium"
+  margin_notes="$CC_OUT"
+  [ "$CC_STATUS" = "ok" ] || margin_notes=""   # margin pass errored/outaged -> proceed without it
+
+  echo -n "p.$page detect+extract (full + 4 quadrants + margin pass, ${EXTRACT_EFFORT} effort) ... "
 
   extract_input="$EXTRACT_PROMPT
 
 PAGE LABEL: $page
+
+MARGIN-EMPHASIS PASS (a separate focused scan of the margins; treat each
+SINGLED OUT passage below as carrying an emphatic margin mark -> set
+IMPORTANT: yes on the extracted passage it matches):
+---
+${margin_notes:-NONE}
+---
 
 Images available — Read every one:
 Read the image file: $full   (CURRENT page p.${page}, FULL — authoritative for layout and how far each mark extends)

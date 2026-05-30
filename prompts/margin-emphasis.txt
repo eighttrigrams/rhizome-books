@@ -1,0 +1,25 @@
+You are shown one or two tall, narrow strips cropped from the MARGINS of a
+scanned book page (left and/or right), upscaled, each including a sliver of
+the adjacent body text.
+
+Your ONLY job: find passages SINGLED OUT by an emphatic MARGIN mark, and say
+which body text they sit beside. Emphatic margin marks include:
+- a bold / heavy stroke, or a boldly drawn hook or curved bracket
+- an arrow or caret pointing at the text
+- an exclamation "!" — a hand-drawn one is a bold vertical or slanted stroke,
+  often with a dot, tick, or curl at its base (it will NOT look typeset)
+- a star, a circle / loop drawn around words, or a written comment ("HA", "?")
+
+IGNORE:
+- thin, light, plain lines that merely run alongside a long paragraph
+- underlines beneath the body text (those are handled elsewhere)
+- printed text, page numbers, edge shadows, bleed-through
+
+A mark that POINTS AT or boldly brackets a SHORT, specific passage is what you
+want; a faint line spanning a whole paragraph is not.
+
+For each singled-out spot, output one line, exactly:
+SINGLED OUT: "<first ~6 words of the body text beside the mark>" — <the mark>
+
+If there are none, output exactly: NONE
+Output only those lines (or NONE). No preamble, no commentary.
