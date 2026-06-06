@@ -57,12 +57,19 @@ cleanup_work() { rm -rf "$WORK"; }
 call_delay() { sleep $(( RANDOM % 5 + 1 )); }
 
 # Call a model once, with content-filter detection and transient-outage retry.
-# Sets globals CC_OUT (stdout) and CC_STATUS (ok | content-filter | outage).
+# Sets globals CC_OUT (model text) and CC_STATUS (ok | content-filter | outage).
+#
+# Success/failure is decided from the CLI's JSON envelope (--output-format json),
+# NOT by scanning the model's text. The old heuristic grepped stdout for error
+# strings including \b5[0-9][0-9]\b (HTTP 5xx); on pages 500-599 the page number
+# in the extracted text matched it, so every such page was falsely treated as a
+# transient outage and retried to death. The envelope's `is_error` flag is the
+# authoritative signal and carries no page-content ambiguity.
 CC_OUT=""
 CC_STATUS=""
 claude_call() {
   local model="$1" input="$2" effort="${3:-$EXTRACT_EFFORT}"
-  local attempt=0 delay=3 out rc err transient
+  local attempt=0 delay=3 raw rc err is_error subtype result
   local infile="$WORK/.cc_in" outfile="$WORK/.cc_out" errfile="$WORK/.cc_err"
   while :; do
     attempt=$((attempt + 1))
@@ -71,7 +78,7 @@ claude_call() {
     # Run in the background under a watchdog so a HUNG call (model degraded but not
     # erroring) is killed and treated as a transient outage, instead of blocking
     # the whole batch forever.
-    claude -p --model "$model" --effort "$effort" --add-dir "$WORK" --tools "Read" \
+    claude -p --model "$model" --effort "$effort" --output-format json --add-dir "$WORK" --tools "Read" \
       < "$infile" > "$outfile" 2>"$errfile" &
     local cpid=$! waited=0 timedout=0
     while kill -0 "$cpid" 2>/dev/null; do
@@ -83,29 +90,40 @@ claude_call() {
       sleep 3; waited=$((waited + 3))
     done
     wait "$cpid" 2>/dev/null; rc=$?
-    out="$(cat "$outfile" 2>/dev/null || true)"
+    raw="$(cat "$outfile" 2>/dev/null || true)"
     err="$(cat "$errfile" 2>/dev/null || true)"
     [ "$timedout" -eq 1 ] && { rc=124; err="${err} [timed out after ${CALL_TIMEOUT}s]"; }
 
+    # Parse the JSON envelope. A well-formed envelope is authoritative; if stdout
+    # does not parse as JSON the call itself failed (crash / timeout / non-JSON
+    # error) and is handled as a failure below.
+    if printf '%s' "$raw" | jq -e . >/dev/null 2>&1; then
+      is_error="$(printf '%s' "$raw" | jq -r '.is_error // false')"
+      subtype="$(printf '%s' "$raw" | jq -r '.subtype // ""')"
+      result="$(printf '%s' "$raw" | jq -r '.result // ""')"
+    else
+      is_error="parse-failed"; subtype=""; result=""
+    fi
+
     # Content filter is deterministic — retrying will not help, so flag and stop.
-    if printf '%s\n%s' "$out" "$err" | grep -qiE 'content filter|output blocked'; then
+    # Only the envelope's error fields and stderr are scanned (never page text),
+    # so an extracted passage that happens to mention "blocked" can't trip this.
+    if printf '%s\n%s' "$subtype" "$err" | grep -qiE 'content filter|content_filter|output blocked'; then
       CC_OUT=""; CC_STATUS="content-filter"; return 0
     fi
 
-    # Transient failure (model unavailable / overloaded / network / 5xx): retry.
-    transient=0
-    [ "$rc" -ne 0 ] && transient=1
-    if printf '%s\n%s' "$out" "$err" | grep -qiE 'temporarily unavailable|overloaded|rate.?limit|server error|api error|timeout|timed out|connection|\b5[0-9][0-9]\b'; then
-      transient=1
-    fi
-    if [ "$transient" -eq 1 ]; then
-      if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-        sleep "$delay"; delay=$((delay * 2)); continue
-      fi
-      CC_OUT="$out"; CC_STATUS="outage"; return 0
+    # A valid envelope reporting success is the only path to "ok". Page content
+    # is never inspected for error markers.
+    if [ "$is_error" = "false" ] && [ "$rc" -eq 0 ]; then
+      CC_OUT="$result"; CC_STATUS="ok"; return 0
     fi
 
-    CC_OUT="$out"; CC_STATUS="ok"; return 0
+    # Everything else is a genuine call failure: unparseable output, is_error=true,
+    # non-zero exit, or watchdog timeout. Retry with backoff, then give up.
+    if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+      sleep "$delay"; delay=$((delay * 2)); continue
+    fi
+    CC_OUT=""; CC_STATUS="outage"; return 0
   done
 }
 

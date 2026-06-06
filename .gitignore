@@ -7,6 +7,8 @@ hooks.log
 logs
 unknown-vocabulary.md
 extracted-bookquotes.md
+extracted-bookquotes.pages
+extracted-bookquotes.status.tsv
 extracted-bookquotes.*.md
 data
 current-img
