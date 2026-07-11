@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 # Extract marked passages from scanned book pages — resumable and repairable.
 #
-#   ./extract-bookquotes.sh                process every page in DIR
+#   ./extract-bookquotes.sh                process the next 10 unsettled pages,
+#                                          auto-resuming from the ledger if a
+#                                          prior run left pages unfinished
+#   ./extract-bookquotes.sh -n 25          same, but process up to 25 pages
 #   ./extract-bookquotes.sh 192            process a single page
 #   ./extract-bookquotes.sh 192 220        process a page range (inclusive)
-#   ./extract-bookquotes.sh resume         re-process only pages that failed or
-#                                          never finished (content-filter / outage /
-#                                          error / not yet attempted) — pages already
-#                                          ok or no-marks are skipped
 #   ./extract-bookquotes.sh --cleanup      wipe ALL prior state (output, ledger,
 #                                          per-page store, scratch), then re-run
-#                                          every page from scratch
+#                                          from scratch
 #   --cleanup may also prefix a narrower run, e.g. `--cleanup 192`.
+#
+# Default (no page args) auto-resumes: pages already ok/no-marks are skipped,
+# and only the first N (default 10) still-unsettled pages are processed this run.
+# Run it again to continue with the next batch.
 #
 # State, all derived from OUTPUT (so it is per-book when OUTPUT is overridden):
 #   <output>.md          assembled result, rebuilt from the per-page store
@@ -206,17 +209,53 @@ assemble_output() {
 }
 
 # ---- arguments ----------------------------------------------------------------
+usage() {
+  cat <<'EOF'
+Extract marked passages from scanned book pages — resumable and repairable.
+
+Usage:
+  ./extract-bookquotes.sh                process the next 10 unsettled pages,
+                                         auto-resuming from the ledger
+  ./extract-bookquotes.sh -n 25          same, but process up to 25 pages
+  ./extract-bookquotes.sh 192            process a single page
+  ./extract-bookquotes.sh 192 220        process a page range (inclusive)
+  ./extract-bookquotes.sh --cleanup      wipe ALL prior state, then re-run
+                                         from scratch (may prefix a page/range)
+  ./extract-bookquotes.sh --help         show this help
+
+Behaviour:
+  With no page arguments the script AUTO-RESUMES. It skips pages already
+  recorded as ok/no-marks in the ledger and processes at most N (default 10,
+  set with -n) still-unsettled pages this run. Run it again to continue with
+  the next batch. It prints a clear RESUMING / STARTING FRESH banner and the
+  page count before it begins.
+
+  Explicit single-page and range runs are NOT limited by -n.
+
+State (derived from OUTPUT, so it is per-book when OUTPUT is overridden):
+  <output>.md          assembled result, rebuilt from the per-page store
+  <output>.pages/      one extracted block per page (p.<page>.md)
+  <output>.status.tsv  ledger: <page>\t<status>\t<detail>
+                       status: ok | no-marks | content-filter | outage | error
+EOF
+}
+
 DO_CLEANUP=0
-RESUME=0
+LIMIT=10
 POSARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    -h|--help) usage; exit 0 ;;
     --cleanup) DO_CLEANUP=1 ;;
-    resume)    RESUME=1 ;;
+    -n)        LIMIT="$2"; shift ;;
     *)         POSARGS+=("$1") ;;
   esac
   shift
 done
+if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [ "$LIMIT" -lt 1 ]; then
+  echo "Invalid -n value: '$LIMIT' (need a positive integer)"
+  exit 1
+fi
 
 # Cleanup is page-independent — do it first so a fresh-from-scratch retry wipes all
 # prior state, then the run proceeds normally (every page by default).
@@ -238,17 +277,7 @@ fi
 # ---- select pages -------------------------------------------------------------
 all_pages=("${ordered[@]}")
 
-if [ "$RESUME" -eq 1 ]; then
-  sel=()
-  for p in "${all_pages[@]}"; do
-    case "$(ledger_get "$p")" in
-      ok|no-marks) ;;             # already settled
-      *)           sel+=("$p") ;; # failed / outage / content-filter / error / never attempted
-    esac
-  done
-  all_pages=("${sel[@]}")
-  echo "RESUME: ${#all_pages[@]} page(s) need (re)processing"
-elif [ ${#POSARGS[@]} -ge 2 ]; then
+if [ ${#POSARGS[@]} -ge 2 ]; then
   from=$(sort_key "${POSARGS[0]}"); to=$(sort_key "${POSARGS[1]}")
   sel=()
   for p in "${all_pages[@]}"; do
@@ -262,6 +291,31 @@ elif [ ${#POSARGS[@]} -eq 1 ]; then
     k=$(sort_key "$p"); (( k == target )) && sel+=("$p")
   done
   all_pages=("${sel[@]}")
+else
+  # Default: auto-resume. Skip pages already settled (ok/no-marks), then take at
+  # most LIMIT of the still-unsettled ones. Running again continues the next batch.
+  unsettled=()
+  for p in "${all_pages[@]}"; do
+    case "$(ledger_get "$p")" in
+      ok|no-marks) ;;             # already settled — skip
+      *)           unsettled+=("$p") ;; # failed / outage / content-filter / error / never attempted
+    esac
+  done
+  total_left=${#unsettled[@]}
+  all_pages=("${unsettled[@]:0:$LIMIT}")
+
+  # "Something to resume" = the ledger already records at least one settled page.
+  if [ -f "$STATUS" ] && awk -F'\t' '$2=="ok"||$2=="no-marks"{f=1} END{exit !f}' "$STATUS"; then
+    echo "======================================================================"
+    echo " RESUMING — a previous run left pages unfinished."
+    echo " $total_left page(s) still unsettled; processing up to $LIMIT this run."
+    echo "======================================================================"
+  else
+    echo "======================================================================"
+    echo " STARTING FRESH — no prior progress found."
+    echo " $total_left page(s) to process; doing up to $LIMIT this run."
+    echo "======================================================================"
+  fi
 fi
 
 if [ ${#all_pages[@]} -eq 0 ]; then
@@ -270,7 +324,7 @@ if [ ${#all_pages[@]} -eq 0 ]; then
   exit 0
 fi
 
-echo "Pages to scan: ${all_pages[*]}"
+echo "Pages to scan (${#all_pages[@]}): ${all_pages[*]}"
 echo "Output: $OUTPUT"
 echo ""
 
@@ -425,6 +479,6 @@ if [ -f "$STATUS" ]; then
   awk -F'\t' '{c[$2]++} END{for(k in c) printf "  %-15s %d\n", k, c[k]}' "$STATUS"
   failed=$(awk -F'\t' '$2!="ok" && $2!="no-marks"{n++} END{print n+0}' "$STATUS")
   if [ "$failed" -gt 0 ]; then
-    echo "  -> $failed page(s) need repair; re-run:  ./extract-bookquotes.sh resume"
+    echo "  -> $failed page(s) need repair; just re-run:  ./extract-bookquotes.sh"
   fi
 fi
