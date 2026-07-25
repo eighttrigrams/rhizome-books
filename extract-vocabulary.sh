@@ -12,7 +12,7 @@ fi
 source "$CONFIG"
 : "${DIR:?DIR not set in $CONFIG}"
 
-OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.txt"
+OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.md"
 
 roman_to_int() {
   local input="${1,,}"
@@ -187,7 +187,7 @@ Only look for underlined words on the CURRENT PAGE (p.$page). The other pages ar
         if (/^PAGE:/)      { print ""; print "---"; print "" }
         else if (/^WORD:/) print ""
       }
-      print
+      print $0 "  "
       out = 1
     }
   ')
