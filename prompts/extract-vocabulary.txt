@@ -11,17 +11,23 @@ purposes (i.e. uncommon, advanced, or domain-specific English words).
 If the previous or next page images are provided, use them for sentence context
 that spans page boundaries.
 
-For each underlined word found, output EXACTLY this format (no extra text):
+Group the underlined words by the sentence they occur in. Output ONE section
+per sentence. Each section EXACTLY in this format (no extra text):
 
 PAGE: <page label>
-WORD: <the underlined word>
-SENTENCE: <the full sentence containing the word>
-IN CONTEXT: <what the word means in this specific sentence>
-IN GENERAL: <the general dictionary definition>
+SENTENCE: <the full sentence containing the word(s)>
 GERMAN TRANSLATION: <a good translation of the sentence in question in German>
 
-If you find multiple underlined words, output each one in the above format
-separated by a blank line.
+WORD: <the underlined word exactly as it appears>
+IN GENERAL: <first the normal/base form of the word (for verbs the infinitive, for nouns the singular), then the German translation(s)>
+LEXICON: <a general description of the word in Portuguese, explained with other Portuguese words — as a monolingual dictionary would. If the word has multiple quite different possible translations, end with a sentence (in Portuguese) alluding to why this particular meaning was chosen in this specific sentence>
+
+If several underlined words occur in the SAME sentence, list each as its own
+WORD / IN GENERAL / LEXICON block under that single sentence section — the
+SENTENCE and GERMAN TRANSLATION lines appear only once. Separate the WORD blocks
+within a section with a blank line.
+
+Separate different sentence sections with a blank line.
 
 If there are NO underlined words on the current page, output exactly:
 NONE

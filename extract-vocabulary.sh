@@ -12,7 +12,7 @@ fi
 source "$CONFIG"
 : "${DIR:?DIR not set in $CONFIG}"
 
-OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.md"
+OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.txt"
 
 roman_to_int() {
   local input="${1,,}"
@@ -179,13 +179,24 @@ Only look for underlined words on the CURRENT PAGE (p.$page). The other pages ar
   count=$(echo "$result" | grep -c "^WORD:" || true)
   echo "$count word(s) found"
 
-  if [ -f "$OUTPUT" ]; then
-    echo "" >> "$OUTPUT"
-    echo "-----" >> "$OUTPUT"
-    echo "" >> "$OUTPUT"
+  formatted=$(echo "$result" | awk '
+    /^[[:space:]]*$/ { next }
+    /^-+[[:space:]]*$/ { next }
+    {
+      if (out) {
+        if (/^PAGE:/)      { print ""; print "---"; print "" }
+        else if (/^WORD:/) print ""
+      }
+      print
+      out = 1
+    }
+  ')
+
+  if [ -s "$OUTPUT" ]; then
+    printf '\n---\n\n' >> "$OUTPUT"
   fi
 
-  echo "$result" >> "$OUTPUT"
+  printf '%s\n' "$formatted" >> "$OUTPUT"
 done
 
 echo ""
