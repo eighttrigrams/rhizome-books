@@ -184,8 +184,9 @@ Only look for underlined words on the CURRENT PAGE (p.$page). The other pages ar
     /^-+[[:space:]]*$/ { next }
     {
       if (out) {
-        if (/^PAGE:/)      { print ""; print "---"; print "" }
-        else if (/^WORD:/) print ""
+        if (/^PAGE:/)                    { print ""; print "---" }
+        else if (/^WORD:/)               print ""
+        else if (/^GERMAN TRANSLATION:/) print ""
       }
       print $0 "  "
       out = 1
@@ -193,7 +194,7 @@ Only look for underlined words on the CURRENT PAGE (p.$page). The other pages ar
   ')
 
   if [ -s "$OUTPUT" ]; then
-    printf '\n---\n\n' >> "$OUTPUT"
+    printf '\n---\n' >> "$OUTPUT"
   fi
 
   printf '%s\n' "$formatted" >> "$OUTPUT"
