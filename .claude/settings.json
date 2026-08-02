@@ -11,9 +11,7 @@
   "enabledMcpjsonServers": [
     "playwright"
   ],
-  "enabledPlugins": {
-    "rhizome@eighttrigrams": true
-  },
+  "enabledPlugins": {},
   "extraKnownMarketplaces": {
     "eighttrigrams": {
       "source": {
