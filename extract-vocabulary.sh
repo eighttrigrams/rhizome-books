@@ -14,6 +14,34 @@ source "$CONFIG"
 
 OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.md"
 
+# Abort the whole run on a failed page, and record it in OUTPUT so the failure is
+# visible in the result and not just in a terminal that may have scrolled away.
+# Stopping (rather than skipping) matters here because the output is append-only
+# with no ledger: a skipped page would leave a silent hole in the vocabulary list.
+fail() {
+  local page="$1" reason="$2" detail="${3:-}"
+  echo "FAILED"
+  {
+    echo ""
+    echo "ERROR: extraction failed on p.${page} — ${reason}"
+    if [ -n "$detail" ]; then
+      echo "--- model stderr ---"
+      echo "$detail"
+      echo "--------------------"
+    fi
+    echo "Stopped. Pages after p.${page} were NOT processed."
+    echo "Fix the cause, then resume with:  $(basename "$0") ${page} <last-page>"
+  } >&2
+
+  if [ -s "$OUTPUT" ]; then
+    printf '\n---\n\n' >> "$OUTPUT"
+  fi
+  printf 'EXTRACTION FAILED at p.%s — %s\nRun stopped here; no pages after p.%s were processed.\n' \
+    "$page" "$reason" "$page" >> "$OUTPUT"
+
+  exit 1
+}
+
 roman_to_int() {
   local input="${1,,}"
   local result=0 prev=0 val=0
@@ -116,62 +144,73 @@ PROMPT="$(cat "${SCRIPT_DIR}/prompts/extract-vocabulary.txt")"
 for page in "${all_pages[@]}"; do
   img="$(find_image "$page")"
   if [ -z "$img" ]; then
-    echo "WARN p.$page: no image"
-    continue
+    echo -n "p.$page ... "
+    fail "$page" "no image file found"
   fi
 
+  # Neighbouring pages travel with the current one so a sentence that crosses a
+  # page boundary can still be quoted in full. They are context only — never
+  # scanned for underlines.
   idx=$(idx_of "$page")
-  args=()
+  prev_page=""; prev_img=""
+  next_page=""; next_img=""
 
   if (( idx > 0 )); then
     prev_page="${ordered[$((idx - 1))]}"
     prev_img="$(find_image "$prev_page")"
-    if [ -n "$prev_img" ]; then
-      args+=("$prev_img")
-    fi
   fi
 
-  args+=("$img")
-
-  if (( idx < ${#ordered[@]} - 1 )); then
+  if (( idx >= 0 && idx < ${#ordered[@]} - 1 )); then
     next_page="${ordered[$((idx + 1))]}"
     next_img="$(find_image "$next_page")"
-    if [ -n "$next_img" ]; then
-      args+=("$next_img")
-    fi
-  fi
-
-  n_imgs=${#args[@]}
-  if (( n_imgs == 1 )); then
-    position_hint="This is the only page image provided. It is the CURRENT PAGE (p.$page)."
-  elif (( n_imgs == 2 )); then
-    if (( idx == 0 )); then
-      position_hint="Two images: first is the CURRENT PAGE (p.$page), second is the next page (context only)."
-    else
-      position_hint="Two images: first is the previous page (context only), second is the CURRENT PAGE (p.$page)."
-    fi
-  else
-    position_hint="Three images: first is the previous page (context only), second is the CURRENT PAGE (p.$page), third is the next page (context only)."
   fi
 
   echo -n "p.$page ... "
 
-  read_instructions=""
-  for f in "${args[@]}"; do
+  # Every image line carries its own label. The previous version described the
+  # images by argument order instead ("first is the previous page, second is the
+  # CURRENT PAGE"), which mislabels the current page whenever a neighbour image is
+  # absent — and then underlines get attributed to the wrong page.
+  read_instructions="Read the image file: $img   (CURRENT page p.${page} — the ONLY page to scan for underlined words)"
+  if [ -n "$prev_img" ]; then
     read_instructions="${read_instructions}
-Read the image file: $f"
-  done
+Read the image file: $prev_img   (PREVIOUS page p.${prev_page} — context only, for a sentence that starts there)"
+  fi
+  if [ -n "$next_img" ]; then
+    read_instructions="${read_instructions}
+Read the image file: $next_img   (NEXT page p.${next_page} — context only, for a sentence that finishes there)"
+  fi
 
   full_prompt="$PROMPT
 
-$position_hint
-$read_instructions
+PAGE LABEL: $page
 
-Only look for underlined words on the CURRENT PAGE (p.$page). The other pages are for sentence context only."
+Images available — Read the CURRENT page; read a neighbour only if a sentence
+needs it to be complete:
+$read_instructions"
 
-  result=$(echo "$full_prompt" | claude -p --model claude-opus-4-6 --effort max --add-dir "$DIR" --tools "Read" 2>/dev/null) || true
+  # stderr is captured rather than discarded, so a failure can say WHY it failed.
+  err_file="$(mktemp)"
+  rc=0
+  result=$(printf '%s' "$full_prompt" \
+    | claude -p --model claude-opus-4-6 --effort max --add-dir "$DIR" --tools "Read" \
+        2>"$err_file") || rc=$?
+  err="$(cat "$err_file")"
+  rm -f "$err_file"
 
-  if [ -z "$result" ] || [[ "$result" == "NONE" ]]; then
+  if [ "$rc" -ne 0 ]; then
+    fail "$page" "the model call exited with status $rc" "$err"
+  fi
+
+  # A successful call always emits something — at minimum the literal NONE. Empty
+  # output therefore means the call did not really succeed, and must NOT be read as
+  # "no underlined words": that conflation is what let a broken call pass silently
+  # as a clean page.
+  if [ -z "$result" ]; then
+    fail "$page" "the model returned empty output" "$err"
+  fi
+
+  if [[ "$result" == "NONE" ]]; then
     echo "no underlined words"
     continue
   fi

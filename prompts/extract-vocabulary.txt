@@ -8,14 +8,28 @@ These underlines are made by a reader marking vocabulary they want to learn.
 Only report words that look like they were underlined for vocabulary learning
 purposes (i.e. uncommon, advanced, or domain-specific English words).
 
-If the previous or next page images are provided, use them for sentence context
-that spans page boundaries.
+FOCUS, AND PAGE BOUNDARIES
+
+Alongside the CURRENT page you are given the previous and the next page, when
+those exist. They serve ONE purpose: a sentence containing an underlined word may
+run across a page boundary, so the CURRENT page alone does not show all of it.
+Only in that case — and only then — read into the neighbour so you can quote the
+sentence in full. Otherwise ignore the neighbours entirely.
+
+Underlines are looked for on the CURRENT page ONLY. Never report a word because it
+is underlined on a neighbouring page; that word belongs to that page's own run.
+
+Repetition across runs is expected and is not a problem — do not try to avoid it.
+If a sentence spans p.3 and p.4 and carries one underlined word on each page, then
+the run for p.3 reports that sentence with only its p.3 word, and the run for p.4
+reports the same sentence again with only its p.4 word. Stating the sentence twice
+is correct. Each run focuses on its own page.
 
 Group the underlined words by the sentence they occur in. Output ONE section
 per sentence. Each section EXACTLY in this format (no extra text):
 
-PAGE: <page label>
-SENTENCE: <the full sentence containing the word(s)>
+PAGE: <the PAGE LABEL supplied with the images — always the CURRENT page>
+SENTENCE: <the full sentence containing the word(s), carried across the page boundary if it runs over>
 GERMAN TRANSLATION: <a good translation of the sentence in question in German>
 
 WORD: <the underlined word exactly as it appears>
