@@ -161,32 +161,47 @@ $(cat "$A")
 --- TRANSCRIPT B (Apple Vision) ---
 $(cat "$B")"
 
-  if ! claude --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" --add-dir "$DIR" -p "$prompt" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
-    printf "%s\t%s\t%s\tarbitrated\t-\tFAILED(claude)\n" "$page" "$agreement" "$disputes" >> "$STATUS"
-    echo "FAILED (claude arbiter) — stopping run"
-    cat "$TMP/claude-err.txt" >&2
-    exit 1
-  fi
-  if grep -q "ARBITER-ERROR" "$FINAL"; then
-    printf "%s\t%s\t%s\tarbitrated\t-\tFAILED(no-image)\n" "$page" "$agreement" "$disputes" >> "$STATUS"
-    echo "FAILED (arbiter could not read the image) — stopping run"
-    head -3 "$FINAL" >&2
-    exit 1
-  fi
+  # Arbitration is not deterministic — a fluke attempt can drop agreed text
+  # and fail verify while an identical re-run passes at full coverage. One
+  # retry absorbs flukes; a page failing twice still stops the whole run.
+  ok=""
+  coverage="-"
+  reason="claude"
+  for attempt in 1 2; do
+    if ! claude --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" --add-dir "$DIR" -p "$prompt" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
+      reason="claude"
+      echo -n "(claude error, attempt $attempt) "
+      continue
+    fi
+    if grep -q "ARBITER-ERROR" "$FINAL"; then
+      # Structural: the arbiter cannot see the image. No retry will fix it.
+      printf "%s\t%s\t%s\tarbitrated\t-\tFAILED(no-image)\n" "$page" "$agreement" "$disputes" >> "$STATUS"
+      echo "FAILED (arbiter could not read the image) — stopping run"
+      head -3 "$FINAL" >&2
+      exit 1
+    fi
+    set +e
+    coverage_line="$("$SCRIPT_DIR/hybrid-merge.py" verify "$FINAL" "$A" "$B" --min-coverage "$MIN_COVERAGE")"
+    verify_exit=$?
+    set -e
+    coverage="$(echo "$coverage_line" | awk '{print $2}')"
+    if [ "$verify_exit" -eq 0 ]; then
+      ok=1
+      break
+    fi
+    reason="coverage"
+    echo -n "(coverage ${coverage} on attempt $attempt) "
+  done
 
-  set +e
-  coverage_line="$("$SCRIPT_DIR/hybrid-merge.py" verify "$FINAL" "$A" "$B" --min-coverage "$MIN_COVERAGE")"
-  verify_exit=$?
-  set -e
-  coverage="$(echo "$coverage_line" | awk '{print $2}')"
-
-  if [ "$verify_exit" -eq 0 ]; then
+  if [ -n "$ok" ]; then
     cp "$FINAL" "$md"
     printf "%s\t%s\t%s\tarbitrated\t%s\tOK\n" "$page" "$agreement" "$disputes" "$coverage" >> "$STATUS"
     echo "OK (arbitrated ${disputes} disputes, coverage ${coverage})"
   else
-    printf "%s\t%s\t%s\tarbitrated\t%s\tFAILED(coverage)\n" "$page" "$agreement" "$disputes" "$coverage" >> "$STATUS"
-    echo "FAILED (arbiter drifted: coverage ${coverage} < ${MIN_COVERAGE}) — no .md written, stopping run"
+    printf "%s\t%s\t%s\tarbitrated\t%s\tFAILED(%s)\n" "$page" "$agreement" "$disputes" "$coverage" "$reason" >> "$STATUS"
+    [ -s "$FINAL" ] && cp "$FINAL" "$DIR/p.${page}.arbiter-failed.txt"
+    [ -s "$TMP/claude-err.txt" ] && cat "$TMP/claude-err.txt" >&2
+    echo "FAILED (${reason}, twice) — no .md written, stopping run"
     exit 1
   fi
 done
