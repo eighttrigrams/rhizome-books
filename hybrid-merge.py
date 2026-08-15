@@ -29,14 +29,20 @@ Commands:
 
   verify FINAL.txt A.txt B.txt [--min-coverage 0.95]
       Checks the arbitrated transcript against the agreed core of A and B:
-      every canonical token the witnesses agree on must reappear in FINAL,
-      in order. Prints "COVERAGE <ratio>". Exit 0 when coverage >= min,
-      else exit 4 — the arbiter drifted and the page must fail loudly.
+      every canonical token the witnesses agree on must reappear in FINAL.
+      Ordered coverage is checked first; when it falls short, order-free
+      (bag) coverage decides — on diagram/figure pages the witnesses read
+      the layout in one interleaving and the arbiter may legitimately
+      reorder it, but tokens going missing or changing is drift either
+      way. Prints "COVERAGE <effective> (ordered <o>, bag <b>, ...)".
+      Exit 0 when either ratio >= min, else exit 4 — the page must fail
+      loudly.
 """
 import argparse
 import difflib
 import sys
 import unicodedata
+from collections import Counter
 from pathlib import Path
 
 QUOTE_FOLD = str.maketrans({
@@ -107,10 +113,12 @@ def cmd_verify(args):
     if not core:
         sys.exit("witnesses share no agreed tokens — nothing to verify against")
     smf = difflib.SequenceMatcher(a=core, b=cf, autojunk=False)
-    kept = sum(bl.size for bl in smf.get_matching_blocks())
-    coverage = kept / len(core)
-    print(f"COVERAGE {coverage:.4f} ({kept}/{len(core)} agreed tokens kept)")
-    sys.exit(0 if coverage >= args.min_coverage else 4)
+    ordered = sum(bl.size for bl in smf.get_matching_blocks()) / len(core)
+    bag_kept = sum((Counter(core) & Counter(cf)).values())
+    bag = bag_kept / len(core)
+    effective = ordered if ordered >= args.min_coverage else bag
+    print(f"COVERAGE {effective:.4f} (ordered {ordered:.4f}, bag {bag:.4f}, core {len(core)})")
+    sys.exit(0 if effective >= args.min_coverage else 4)
 
 
 def main():
