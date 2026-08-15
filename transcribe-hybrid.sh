@@ -19,12 +19,16 @@
 #
 # Results land in $DIR/transcribe-status.tsv:
 #   page  agreement  disputes  source(agreed|arbitrated)  coverage  result
-# The script exits non-zero if any page failed.
+# A failed arbitration (claude error or coverage below MIN_COVERAGE) stops
+# the whole run immediately. The arbiter model/effort default to
+# ARBITER_MODEL=claude-opus-4-8, ARBITER_EFFORT=high (env-overridable).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${SCRIPT_DIR}/working-dir.conf"
 MIN_COVERAGE="${MIN_COVERAGE:-0.95}"
+ARBITER_MODEL="${ARBITER_MODEL:-claude-opus-4-8}"
+ARBITER_EFFORT="${ARBITER_EFFORT:-high}"
 
 [ -f "$CONFIG" ] || { echo "Missing config: $CONFIG"; exit 1; }
 source "$CONFIG"
@@ -100,7 +104,6 @@ trap 'rm -rf "$TMP"' EXIT
 echo "Pages: ${all_pages[*]}"
 echo ""
 
-failures=0
 for page in "${all_pages[@]}"; do
   img=""
   for ext in jpeg jpg; do
@@ -154,9 +157,11 @@ $(cat "$A")
 --- TRANSCRIPT B (Apple Vision) ---
 $(cat "$B")"
 
-  if ! claude -p "$prompt" "$img" > "$FINAL" 2>/dev/null || [ ! -s "$FINAL" ]; then
+  if ! claude --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" -p "$prompt" "$img" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
     printf "%s\t%s\t%s\tarbitrated\t-\tFAILED(claude)\n" "$page" "$agreement" "$disputes" >> "$STATUS"
-    echo "FAILED (claude arbiter)"; failures=$((failures+1)); continue
+    echo "FAILED (claude arbiter) — stopping run"
+    cat "$TMP/claude-err.txt" >&2
+    exit 1
   fi
 
   set +e
@@ -171,14 +176,10 @@ $(cat "$B")"
     echo "OK (arbitrated ${disputes} disputes, coverage ${coverage})"
   else
     printf "%s\t%s\t%s\tarbitrated\t%s\tFAILED(coverage)\n" "$page" "$agreement" "$disputes" "$coverage" >> "$STATUS"
-    echo "FAILED (arbiter drifted: coverage ${coverage} < ${MIN_COVERAGE}) — no .md written"
-    failures=$((failures+1))
+    echo "FAILED (arbiter drifted: coverage ${coverage} < ${MIN_COVERAGE}) — no .md written, stopping run"
+    exit 1
   fi
 done
 
 echo ""
-if [ "$failures" -gt 0 ]; then
-  echo "Done with $failures FAILED page(s) — see $STATUS"
-  exit 1
-fi
 echo "All done."
