@@ -122,9 +122,20 @@ for page in "${all_pages[@]}"; do
   tesseract "$img" "${A%.txt}" -l eng 2>/dev/null \
     || { echo "FAIL (tesseract)"; exit 1; }
 
-  # Witness B: Apple Vision.
-  swift "$SCRIPT_DIR/vision-ocr.swift" "$img" > "$B" \
-    || { echo "FAIL (vision-ocr)"; exit 1; }
+  # Witness B: Apple Vision. A genuinely blank page is not an error: when
+  # tesseract also sees no text there, an empty .md records the blank page
+  # (same convention as the old tesseract-only pipeline). Only one witness
+  # going silent while the other reads text stays a loud failure.
+  if ! swift "$SCRIPT_DIR/vision-ocr.swift" "$img" > "$B" 2>"$TMP/vision-err.txt"; then
+    if grep -q "zero text lines" "$TMP/vision-err.txt" && [ -z "$(tr -d '[:space:]' < "$A")" ]; then
+      : > "$md"
+      printf "%s\t-\t0\tblank\t-\tOK\n" "$page" >> "$STATUS"
+      echo "OK (blank page)"
+      continue
+    fi
+    cat "$TMP/vision-err.txt" >&2
+    echo "FAIL (vision-ocr)"; exit 1
+  fi
 
   set +e
   "$SCRIPT_DIR/hybrid-merge.py" compare "$A" "$B" > "$REPORT"
