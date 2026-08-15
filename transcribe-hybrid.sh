@@ -142,10 +142,14 @@ for page in "${all_pages[@]}"; do
   fi
 
   # Arbitration: Claude reads the page image; agreed text is copied verbatim,
-  # only the disputed spans are re-read from the image.
-  prompt="You are the arbiter between two OCR transcripts of the same printed book page (the attached image).
+  # only the disputed spans are re-read from the image. The image lives
+  # outside the repo (iCloud), hence --add-dir; the arbiter must prove it
+  # actually saw the pixels or bail out with ARBITER-ERROR — never guess.
+  prompt="You are the arbiter between two OCR transcripts of the same printed book page.
+The page image is the file: $img
+FIRST read that image file (Read tool). If you cannot open or see the image, output exactly 'ARBITER-ERROR: cannot read image' and nothing else. Never decide a dispute without having looked at the pixels.
 Transcript A (tesseract) and transcript B (Apple Vision) agree on most of the text. Wherever they agree, that text is correct: copy it VERBATIM, do not rephrase, fix or normalize it.
-They differ only at the disputed spans listed below. There — and only there — read the page image yourself and transcribe exactly what is printed. The truth may match A, match B, or be something else.
+They differ only at the disputed spans listed below. There — and only there — transcribe exactly what is printed on the page. The truth may match A, match B, or be something else.
 Preserve paragraph breaks as blank lines. Keep line-end hyphenation exactly as printed on the page.
 Output ONLY the final transcript, nothing else.
 
@@ -157,10 +161,16 @@ $(cat "$A")
 --- TRANSCRIPT B (Apple Vision) ---
 $(cat "$B")"
 
-  if ! claude --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" -p "$prompt" "$img" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
+  if ! claude --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" --add-dir "$DIR" -p "$prompt" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
     printf "%s\t%s\t%s\tarbitrated\t-\tFAILED(claude)\n" "$page" "$agreement" "$disputes" >> "$STATUS"
     echo "FAILED (claude arbiter) — stopping run"
     cat "$TMP/claude-err.txt" >&2
+    exit 1
+  fi
+  if grep -q "ARBITER-ERROR" "$FINAL"; then
+    printf "%s\t%s\t%s\tarbitrated\t-\tFAILED(no-image)\n" "$page" "$agreement" "$disputes" >> "$STATUS"
+    echo "FAILED (arbiter could not read the image) — stopping run"
+    head -3 "$FINAL" >&2
     exit 1
   fi
 

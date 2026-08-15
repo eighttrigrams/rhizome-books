@@ -6,71 +6,108 @@
 Word-level cross-check between two OCR witnesses of the same page, and
 verification of an arbitrated transcript. Part of transcribe-hybrid.sh.
 
+Tokens are canonicalized before comparison so that purely typographic
+differences never count as disputes: NFKC-normalized (ligatures, ellipses),
+curly quotes folded to straight ones, every dash variant folded to "-",
+case-folded, tokens split at dashes (so "state—life" aligns with "state — life"),
+and punctuation-only fragments dropped. Where the canonical streams agree,
+witness A's original rendering (tesseract keeps the printed typography:
+curly quotes, em dashes) is what stands. Only content-level differences
+become disputes for the arbiter.
+
 Commands:
 
   compare A.txt B.txt
-      Aligns the two transcripts token-wise. Prints a report to stdout:
+      Aligns the two transcripts canonically. Prints a report to stdout:
       first line "AGREEMENT <ratio> DISPUTES <n>", then one block per
       disputed span:
-          == dispute <i> (context: ...preceding agreed words...)
-          A: <what witness A reads>
-          B: <what witness B reads>
-      Exit 0 when there are no disputes (the page needs no arbiter),
+          == dispute <i> (context: ...preceding words of A...)
+          A: <what witness A reads, original rendering>
+          B: <what witness B reads, original rendering>
+      Exit 0 when there are no disputes (the page needs no arbiter, use A),
       exit 3 when there are (the report is the arbiter's work order).
 
   verify FINAL.txt A.txt B.txt [--min-coverage 0.95]
       Checks the arbitrated transcript against the agreed core of A and B:
-      every token the witnesses agree on must reappear in FINAL, in order.
-      Prints "COVERAGE <ratio>". Exit 0 when coverage >= min, else exit 4 —
-      the arbiter drifted and the page must fail loudly.
-
-Tokens are compared case-sensitively, whitespace-normalized. The agreed core
-is the longest common subsequence of the two witness token streams.
+      every canonical token the witnesses agree on must reappear in FINAL,
+      in order. Prints "COVERAGE <ratio>". Exit 0 when coverage >= min,
+      else exit 4 — the arbiter drifted and the page must fail loudly.
 """
 import argparse
 import difflib
 import sys
+import unicodedata
 from pathlib import Path
 
+QUOTE_FOLD = str.maketrans({
+    "“": '"', "”": '"', "„": '"', "«": '"', "»": '"',
+    "‘": "'", "’": "'", "‚": "'",
+})
+DASHES = "‐‑‒–—―−"
+PUNCT_ONLY = set('"\'-' + DASHES)
 
-def tokens(path):
+
+def raw_tokens(path):
     return Path(path).read_text(encoding="utf-8", errors="replace").split()
 
 
-def agreed_core(a, b):
-    sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
-    core = []
-    for block in sm.get_matching_blocks():
-        core.extend(a[block.a : block.a + block.size])
-    return core, sm
+def canonicalize(tokens):
+    """Return (canon, origin): the canonical token stream and, per canonical
+    token, the index of the original token it came from."""
+    canon, origin = [], []
+    for idx, tok in enumerate(tokens):
+        t = unicodedata.normalize("NFKC", tok).translate(QUOTE_FOLD)
+        for d in DASHES:
+            t = t.replace(d, "-")
+        t = t.casefold()
+        for part in t.split("-"):
+            if part and not set(part) <= PUNCT_ONLY:
+                canon.append(part)
+                origin.append(idx)
+    return canon, origin
+
+
+def span_text(tokens, origin, c1, c2, canon_len):
+    """Original-rendering text behind canonical span [c1, c2)."""
+    if c1 == c2:
+        return ""
+    lo = origin[c1]
+    hi = origin[c2 - 1] if c2 - 1 < canon_len else origin[-1]
+    return " ".join(tokens[lo : hi + 1])
 
 
 def cmd_compare(args):
-    a = tokens(args.a)
-    b = tokens(args.b)
+    a = raw_tokens(args.a)
+    b = raw_tokens(args.b)
     if not a or not b:
         sys.exit(f"empty witness transcript: {'A' if not a else 'B'}")
-    core, sm = agreed_core(a, b)
+    ca, oa = canonicalize(a)
+    cb, ob = canonicalize(b)
+    sm = difflib.SequenceMatcher(a=ca, b=cb, autojunk=False)
     opcodes = [op for op in sm.get_opcodes() if op[0] != "equal"]
-    ratio = sm.ratio()
-    print(f"AGREEMENT {ratio:.4f} DISPUTES {len(opcodes)}")
+    print(f"AGREEMENT {sm.ratio():.4f} DISPUTES {len(opcodes)}")
     for i, (tag, i1, i2, j1, j2) in enumerate(opcodes, 1):
-        ctx = " ".join(a[max(0, i1 - 6) : i1])
+        ctx_lo = oa[max(0, i1 - 6)] if ca else 0
+        ctx_hi = oa[i1 - 1] + 1 if i1 > 0 else 0
+        ctx = " ".join(a[ctx_lo:ctx_hi])
         print(f"== dispute {i} (context: …{ctx})")
-        print(f"A: {' '.join(a[i1:i2]) or '(nothing)'}")
-        print(f"B: {' '.join(b[j1:j2]) or '(nothing)'}")
+        print(f"A: {span_text(a, oa, i1, i2, len(ca)) or '(nothing)'}")
+        print(f"B: {span_text(b, ob, j1, j2, len(cb)) or '(nothing)'}")
     sys.exit(0 if not opcodes else 3)
 
 
 def cmd_verify(args):
-    final = tokens(args.final)
-    a = tokens(args.a)
-    b = tokens(args.b)
-    core, _ = agreed_core(a, b)
+    ca, _ = canonicalize(raw_tokens(args.a))
+    cb, _ = canonicalize(raw_tokens(args.b))
+    cf, _ = canonicalize(raw_tokens(args.final))
+    sm = difflib.SequenceMatcher(a=ca, b=cb, autojunk=False)
+    core = []
+    for block in sm.get_matching_blocks():
+        core.extend(ca[block.a : block.a + block.size])
     if not core:
         sys.exit("witnesses share no agreed tokens — nothing to verify against")
-    sm = difflib.SequenceMatcher(a=core, b=final, autojunk=False)
-    kept = sum(bl.size for bl in sm.get_matching_blocks())
+    smf = difflib.SequenceMatcher(a=core, b=cf, autojunk=False)
+    kept = sum(bl.size for bl in smf.get_matching_blocks())
     coverage = kept / len(core)
     print(f"COVERAGE {coverage:.4f} ({kept}/{len(core)} agreed tokens kept)")
     sys.exit(0 if coverage >= args.min_coverage else 4)
