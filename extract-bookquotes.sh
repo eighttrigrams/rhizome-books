@@ -81,7 +81,7 @@ claude_call() {
     # Run in the background under a watchdog so a HUNG call (model degraded but not
     # erroring) is killed and treated as a transient outage, instead of blocking
     # the whole batch forever.
-    claude -p --model "$model" --effort "$effort" --output-format json --add-dir "$WORK" --tools "Read" \
+    claude -p --strict-mcp-config --model "$model" --effort "$effort" --output-format json --add-dir "$WORK" --tools "Read" \
       < "$infile" > "$outfile" 2>"$errfile" &
     local cpid=$! waited=0 timedout=0
     while kill -0 "$cpid" 2>/dev/null; do

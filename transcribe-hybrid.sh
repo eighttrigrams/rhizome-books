@@ -179,7 +179,7 @@ $(cat "$B")"
   coverage="-"
   reason="claude"
   for attempt in 1 2; do
-    if ! claude --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" --add-dir "$DIR" -p "$prompt" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
+    if ! claude --strict-mcp-config --model "$ARBITER_MODEL" --effort "$ARBITER_EFFORT" --add-dir "$DIR" -p "$prompt" > "$FINAL" 2>"$TMP/claude-err.txt" || [ ! -s "$FINAL" ]; then
       reason="claude"
       echo -n "(claude error, attempt $attempt) "
       continue

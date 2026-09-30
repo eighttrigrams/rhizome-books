@@ -28,7 +28,7 @@ for img in "$DIR"/*.jpeg "$DIR"/*.jpg; do
   [ -f "$md" ] && echo "SKIP $base (already exists)" && continue
 
   echo -n "$base ... "
-  if claude -p "Read the image and transcribe all text content exactly as it appears on the page. Output only the transcribed text, nothing else. Preserve paragraph breaks." "$img" > "$md" 2>/dev/null; then
+  if claude -p --strict-mcp-config "Read the image and transcribe all text content exactly as it appears on the page. Output only the transcribed text, nothing else. Preserve paragraph breaks." "$img" > "$md" 2>/dev/null; then
     echo "DONE"
   else
     echo "FAIL"
