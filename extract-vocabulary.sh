@@ -22,6 +22,9 @@ STATUS="${OUTPUT%.md}.status.tsv"
 
 BATCH=0   # 1 when run without page arguments (the next -n unsettled pages)
 
+MODEL="${MODEL:-claude-opus-5-5}"   # overridable from the environment, e.g. to try a model
+EFFORT="${EFFORT:-xhigh}"            # likewise; max took ~7 min on one dense page
+
 ledger_set() {
   local page="$1" st="$2" detail="${3:-}"
   if [ -f "$STATUS" ]; then
@@ -285,7 +288,7 @@ $read_instructions"
   err_file="$(mktemp)"
   rc=0
   result=$(printf '%s' "$full_prompt" \
-    | claude -p --strict-mcp-config --model claude-opus-4-8 --effort max --add-dir "$DIR" --tools "Read" \
+    | claude -p --strict-mcp-config --model "$MODEL" --effort "$EFFORT" --add-dir "$DIR" --tools "Read" \
         2>"$err_file") || rc=$?
   err="$(cat "$err_file")"
   rm -f "$err_file"
