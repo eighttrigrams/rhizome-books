@@ -193,7 +193,7 @@ $read_instructions"
   err_file="$(mktemp)"
   rc=0
   result=$(printf '%s' "$full_prompt" \
-    | claude -p --model claude-opus-4-6 --effort max --add-dir "$DIR" --tools "Read" \
+    | claude -p --model claude-opus-4-8 --effort max --add-dir "$DIR" --tools "Read" \
         2>"$err_file") || rc=$?
   err="$(cat "$err_file")"
   rm -f "$err_file"
