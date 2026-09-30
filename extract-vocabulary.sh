@@ -14,13 +14,38 @@ source "$CONFIG"
 
 OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.md"
 
+# Ledger of settled pages, so a plain run picks up where the last one stopped.
+# Lines: <dir>\t<page>\t<status>\t<detail>   status: ok | no-words | error
+# Keyed by DIR as well as page: OUTPUT is shared across books, and page numbers
+# repeat from book to book. Delete the file to start over.
+STATUS="${OUTPUT%.md}.status.tsv"
+
+BATCH=0   # 1 when run without page arguments (the next -n unsettled pages)
+
+ledger_set() {
+  local page="$1" st="$2" detail="${3:-}"
+  if [ -f "$STATUS" ]; then
+    awk -F'\t' -v d="$DIR" -v p="$page" '!($1==d && $2==p)' "$STATUS" > "$STATUS.tmp" \
+      && mv "$STATUS.tmp" "$STATUS"
+  fi
+  printf '%s\t%s\t%s\t%s\n' "$DIR" "$page" "$st" "$detail" >> "$STATUS"
+}
+
+ledger_get() {
+  local page="$1"
+  [ -f "$STATUS" ] || return 0
+  awk -F'\t' -v d="$DIR" -v p="$page" '$1==d && $2==p {v=$3} END{if(v)print v}' "$STATUS"
+}
+
 # Abort the whole run on a failed page, and record it in OUTPUT so the failure is
 # visible in the result and not just in a terminal that may have scrolled away.
-# Stopping (rather than skipping) matters here because the output is append-only
-# with no ledger: a skipped page would leave a silent hole in the vocabulary list.
+# Stopping (rather than skipping) matters here because the output is append-only:
+# a skipped page would leave a hole, and running on past it would put the
+# vocabulary list out of page order once the page is retried.
 fail() {
   local page="$1" reason="$2" detail="${3:-}"
   echo "FAILED"
+  ledger_set "$page" error "$reason"
   {
     echo ""
     echo "ERROR: extraction failed on p.${page} — ${reason}"
@@ -30,7 +55,11 @@ fail() {
       echo "--------------------"
     fi
     echo "Stopped. Pages after p.${page} were NOT processed."
-    echo "Fix the cause, then resume with:  $(basename "$0") ${page} <last-page>"
+    if [ "$BATCH" -eq 1 ]; then
+      echo "Fix the cause, then run it again: it picks up at p.${page}."
+    else
+      echo "Fix the cause, then resume with:  $(basename "$0") ${page} <last-page>"
+    fi
   } >&2
 
   if [ -s "$OUTPUT" ]; then
@@ -91,6 +120,43 @@ find_image() {
   done
 }
 
+usage() {
+  cat <<'EOF'
+Extract hand-underlined vocabulary from scanned book pages.
+
+Usage:
+  ./extract-vocabulary.sh             process the next 10 pages not yet done,
+                                      resuming from the ledger
+  ./extract-vocabulary.sh -n 20       same, but up to 20 pages
+  ./extract-vocabulary.sh 192         process a single page
+  ./extract-vocabulary.sh 192 220     process a page range (inclusive)
+  ./extract-vocabulary.sh --help      show this help
+
+Results are appended to unknown-vocabulary.md. Finished pages are recorded
+per working dir in unknown-vocabulary.status.tsv; a run without page
+arguments skips them. Single-page and range runs always re-run the pages
+they name (appending again) and are not limited by -n.
+A failed page stops the run; the next run starts again at that page.
+EOF
+}
+
+LIMIT=10
+POSARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -n)
+      [ $# -ge 2 ] || { echo "-n needs a number"; exit 1; }
+      LIMIT="$2"; shift ;;
+    *) POSARGS+=("$1") ;;
+  esac
+  shift
+done
+if ! [[ "$LIMIT" =~ ^[0-9]+$ ]] || [ "$LIMIT" -lt 1 ]; then
+  echo "Invalid -n value: '$LIMIT' (need a positive integer)"
+  exit 1
+fi
+
 mapfile -t all_pages < <(collect_pages)
 
 if [ ${#all_pages[@]} -eq 0 ]; then
@@ -98,23 +164,49 @@ if [ ${#all_pages[@]} -eq 0 ]; then
   exit 1
 fi
 
-if [ $# -ge 2 ]; then
-  from=$(sort_key "$1")
-  to=$(sort_key "$2")
+if [ ${#POSARGS[@]} -ge 2 ]; then
+  from=$(sort_key "${POSARGS[0]}")
+  to=$(sort_key "${POSARGS[1]}")
   filtered=()
   for p in "${all_pages[@]}"; do
     k=$(sort_key "$p")
     (( k >= from && k <= to )) && filtered+=("$p")
   done
   all_pages=("${filtered[@]}")
-elif [ $# -eq 1 ]; then
-  target=$(sort_key "$1")
+elif [ ${#POSARGS[@]} -eq 1 ]; then
+  target=$(sort_key "${POSARGS[0]}")
   filtered=()
   for p in "${all_pages[@]}"; do
     k=$(sort_key "$p")
     (( k == target )) && filtered+=("$p")
   done
   all_pages=("${filtered[@]}")
+else
+  # No page arguments: skip pages already settled, take the next LIMIT of the rest.
+  BATCH=1
+  unsettled=()
+  for p in "${all_pages[@]}"; do
+    case "$(ledger_get "$p")" in
+      ok|no-words) ;;
+      *) unsettled+=("$p") ;;
+    esac
+  done
+  total_left=${#unsettled[@]}
+
+  if [ "$total_left" -eq 0 ]; then
+    echo "Nothing to do: every page in $DIR is already done."
+    echo "(Delete $(basename "$STATUS") to start over.)"
+    exit 0
+  fi
+
+  all_pages=("${unsettled[@]:0:$LIMIT}")
+
+  if [ -f "$STATUS" ] \
+     && awk -F'\t' -v d="$DIR" '$1==d && ($3=="ok" || $3=="no-words") {f=1} END{exit !f}' "$STATUS"; then
+    echo "RESUMING — $total_left page(s) still to do; doing up to $LIMIT this run."
+  else
+    echo "STARTING FRESH — $total_left page(s) to do; doing up to $LIMIT this run."
+  fi
 fi
 
 if [ ${#all_pages[@]} -eq 0 ]; then
@@ -212,6 +304,7 @@ $read_instructions"
 
   if [[ "$result" == "NONE" ]]; then
     echo "no underlined words"
+    ledger_set "$page" no-words
     continue
   fi
 
@@ -237,7 +330,18 @@ $read_instructions"
   fi
 
   printf '%s\n' "$formatted" >> "$OUTPUT"
+  # Only after the words are safely in OUTPUT: a crash in between re-runs the
+  # page (a duplicate) rather than skipping it (a hole).
+  ledger_set "$page" ok "$count word(s)"
 done
 
 echo ""
 echo "Done. Results in: $OUTPUT"
+if [ "$BATCH" -eq 1 ]; then
+  left=$(( total_left - ${#all_pages[@]} ))
+  if (( left > 0 )); then
+    echo "$left page(s) still to do — run again for the next batch."
+  else
+    echo "All pages in $DIR are done."
+  fi
+fi

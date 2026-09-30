@@ -45,6 +45,16 @@ Extracts new vocabulary.
 
 Supports the same range arguments as `extract-bookquotes.sh`.
 
+Without page arguments it works in batches: each run does the next 10
+pages not yet done, and picks up where the last one stopped.
+
+```
+./extract-vocabulary.sh -n 20 # next 20 pages
+```
+
+Finished pages are recorded per working dir in
+`unknown-vocabulary.status.tsv`. Delete it to start over.
+
 ## Development
 
 Use
