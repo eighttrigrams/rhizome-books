@@ -57,10 +57,11 @@ CONTEXT: <1 or 2 sentences in German giving a picture of the situation around th
 
 WORD: <the underlined word exactly as it appears>
 IN GENERAL: <first the normal/base form of the word (for verbs the infinitive, for nouns the singular), then the German translation(s)>
-LEXICON: <a general description of the word in Portuguese, explained with other Portuguese words — as a monolingual dictionary would. If the word has multiple quite different possible translations, end with a sentence (in Portuguese) alluding to why this particular meaning was chosen in this specific sentence>
+LEXICON: <a general description of the word in Portuguese, explained with other Portuguese words — as a monolingual dictionary would. If the word has multiple quite different possible meanings, list them. Do NOT end with which meaning applies in this sentence or why — no "aqui significa…" / "neste trecho…" closing, and do not quote or retell the sentence>
+LEXICON (GERMAN): <an exact, literal German translation of the LEXICON line just above — translate that text sentence by sentence; do not write a fresh German explanation of the word>
 
 If several underlined words occur in the SAME sentence, list each as its own
-WORD / IN GENERAL / LEXICON block under that single sentence section — the
+WORD / IN GENERAL / LEXICON / LEXICON (GERMAN) block under that single sentence section — the
 SENTENCE, GERMAN TRANSLATION and CONTEXT lines appear only once. Separate the WORD blocks
 within a section with a blank line.
 
