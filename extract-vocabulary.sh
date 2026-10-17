@@ -9,10 +9,15 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
+# DIR and OUTPUT may be given in the environment, for trial runs that should not
+# touch the configured book or the real vocabulary list (and its ledger).
+ENV_DIR="${DIR:-}"
+ENV_OUTPUT="${OUTPUT:-}"
 source "$CONFIG"
+DIR="${ENV_DIR:-${DIR:-}}"
 : "${DIR:?DIR not set in $CONFIG}"
 
-OUTPUT="${SCRIPT_DIR}/unknown-vocabulary.md"
+OUTPUT="${ENV_OUTPUT:-${SCRIPT_DIR}/unknown-vocabulary.md}"
 
 # Ledger of settled pages, so a plain run picks up where the last one stopped.
 # Lines: <dir>\t<page>\t<status>\t<detail>   status: ok | no-words | error
@@ -280,8 +285,8 @@ Read the image file: $next_img   (NEXT page p.${next_page} — context only, for
 
 PAGE LABEL: $page
 
-Images available — Read the CURRENT page; read a neighbour only if a sentence
-needs it to be complete:
+Images available — Read the CURRENT page; read a neighbour when a sentence
+needs it to be complete, or when the CONTEXT line needs it:
 $read_instructions"
 
   # stderr is captured rather than discarded, so a failure can say WHY it failed.
@@ -321,6 +326,8 @@ $read_instructions"
       if (out) {
         if (/^PAGE:/)                    { print ""; print "---" }
         else if (/^WORD:/)               print ""
+        else if (/^SENTENCE:/)           print ""
+        else if (/^CONTEXT:/)            print ""
         else if (/^GERMAN TRANSLATION:/) print ""
       }
       print $0 "  "

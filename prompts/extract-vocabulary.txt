@@ -11,10 +11,10 @@ purposes (i.e. uncommon, advanced, or domain-specific English words).
 FOCUS, AND PAGE BOUNDARIES
 
 Alongside the CURRENT page you are given the previous and the next page, when
-those exist. They serve ONE purpose: a sentence containing an underlined word may
-run across a page boundary, so the CURRENT page alone does not show all of it.
-Only in that case — and only then — read into the neighbour so you can quote the
-sentence in full. Otherwise ignore the neighbours entirely.
+those exist. They serve TWO purposes: a sentence containing an underlined word may
+run across a page boundary, so the CURRENT page alone does not show all of it —
+then read into the neighbour so you can quote the sentence in full. And the
+CONTEXT line (see below) may draw on them.
 
 Underlines are looked for on the CURRENT page ONLY. Never report a word because it
 is underlined on a neighbouring page; that word belongs to that page's own run.
@@ -25,12 +25,35 @@ the run for p.3 reports that sentence with only its p.3 word, and the run for p.
 reports the same sentence again with only its p.4 word. Stating the sentence twice
 is correct. Each run focuses on its own page.
 
+CONTEXT
+
+The reader goes through these entries much later, away from the book, and then
+often no longer knows what the passage was about: who "ele" or "ela" is, what
+"isso" refers to, which scene or argument is going on. The CONTEXT line is there
+to give back a picture of the situation the sentence stands in.
+
+For each sentence, write a short summary, in German, of what is going on around
+it: 1 or 2 sentences of your own, drawn from the CURRENT page and its neighbours.
+Paint the situation: where we are, who is there, what just happened or is being
+discussed, the mood of the scene or the drift of the argument — whatever lights
+up the sentence. Name what the pronouns and references point to where that is
+not obvious, but do not stop there; a little more of the surroundings is welcome
+when it helps the reader see the scene.
+
+Never repeat or paraphrase the sentence itself: the reader has it, and its
+translation, right above. Tell what lies around it, not what it says. Nor
+explain what the sentence and its translation already make plain — no glosses
+like "the wall of silence is his silence". Explain a reference only when the
+reader could really not tell what it points to without the surroundings.
+Do not summarise the whole page either — only what helps understand this sentence.
+
 Group the underlined words by the sentence they occur in. Output ONE section
 per sentence. Each section EXACTLY in this format (no extra text):
 
 PAGE: <the PAGE LABEL supplied with the images — always the CURRENT page>
 SENTENCE: <the full sentence containing the word(s), carried across the page boundary if it runs over>
 GERMAN TRANSLATION: <a good translation of the sentence in question in German>
+CONTEXT: <1 or 2 sentences in German giving a picture of the situation around the sentence, without repeating it>
 
 WORD: <the underlined word exactly as it appears>
 IN GENERAL: <first the normal/base form of the word (for verbs the infinitive, for nouns the singular), then the German translation(s)>
@@ -38,7 +61,7 @@ LEXICON: <a general description of the word in Portuguese, explained with other 
 
 If several underlined words occur in the SAME sentence, list each as its own
 WORD / IN GENERAL / LEXICON block under that single sentence section — the
-SENTENCE and GERMAN TRANSLATION lines appear only once. Separate the WORD blocks
+SENTENCE, GERMAN TRANSLATION and CONTEXT lines appear only once. Separate the WORD blocks
 within a section with a blank line.
 
 Separate different sentence sections with a blank line.
